@@ -1,5 +1,8 @@
 package com.example.ar2;
 
+import static java.lang.Math.abs;
+import static java.lang.Math.pow;
+
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -34,6 +37,7 @@ import org.tensorflow.lite.support.model.Model;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
+import java.util.Arrays;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -45,6 +49,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_IMAGE_CAPTURE=101;
     private Button btn_select;
     private TensorImage inputImageBuffer;
+    private double xs=0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,6 +57,22 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         mimageview=findViewById(R.id.ImageView);
         tv=findViewById(R.id.tv);
+        tv.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                boolean kt=true;
+                String xx=new String(String.valueOf(tv.getText()));
+                String x1=new String("");
+                for (int i=0;i<xx.length();i++)
+                    if (xx.charAt(i)=='\n')
+                    {
+                        kt=false;
+                        break;
+                    } else x1=x1+xx.charAt(i);
+                if (kt) tv.setText(tv.getText()+"\n"+String.format("%.2f",xs));
+                else tv.setText(x1);
+            }
+        });
         btn_select=(Button) findViewById(R.id.btnCamera2);
         btn_select.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -62,6 +83,19 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+    }
+
+    private double[] softmax(float[] out) {
+        double[] proba=new double[out.length];
+        double sum=0;
+        for (int i=0;i<out.length;i++)
+            sum+=pow(Math.E,out[i]);
+        for (int i=0;i<out.length;i++)
+        {
+            double p=Math.pow(Math.E,out[i])/sum;
+            proba[i]=p;
+        };
+        return proba;
     }
 
     @Override
@@ -108,8 +142,11 @@ public class MainActivity extends AppCompatActivity {
                     // Releases model resources if no longer used.
                     model.close();
                     int vtmax=0;
-                    for (int i=0;i<outputFeature0.getFloatArray().length;i++)
-                        if (outputFeature0.getFloatArray()[i]>outputFeature0.getFloatArray()[vtmax]) vtmax=i;
+                    double[] ans=softmax(outputFeature0.getFloatArray());
+                    double sum=0;
+                    for (int i=0;i<ans.length;i++)
+                        if (ans[vtmax]<ans[i]) vtmax=i;
+                    xs=ans[vtmax];
                     tv.setText(labels[vtmax]);
                 } catch (IOException e) {
                     // TODO Handle the exception
@@ -120,46 +157,49 @@ public class MainActivity extends AppCompatActivity {
         } else
         {
             if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == RESULT_OK) {
-            Bundle extras = data.getExtras();
-            Bitmap img2=(Bitmap) extras.get("data");
-            inputImageBuffer = new TensorImage();
-            inputImageBuffer.load(img2.copy(Bitmap.Config.ARGB_8888,true));
+                Bundle extras = data.getExtras();
+                Bitmap img2=(Bitmap) extras.get("data");
+                inputImageBuffer = new TensorImage();
+                inputImageBuffer.load(img2.copy(Bitmap.Config.ARGB_8888,true));
 
-            int cropSize = Math.min(img2.getWidth(), img2.getHeight());
-            int numRoration = 0 / 90;
-            ImageProcessor imageProcessor =
-                    new ImageProcessor.Builder()
-                            .add(new ResizeWithCropOrPadOp(cropSize, cropSize))
-                            .add(new ResizeOp(224, 224, ResizeOp.ResizeMethod.NEAREST_NEIGHBOR))
-                            .add(new Rot90Op(numRoration))
-                            .add(new NormalizeOp(0f, 255f))
-                            .build();
-            TensorImage test=imageProcessor.process(inputImageBuffer);
-            try {
-                LiteModelMobilenetV3Small100224 model = LiteModelMobilenetV3Small100224.newInstance(getApplicationContext());
+                int cropSize = Math.min(img2.getWidth(), img2.getHeight());
+                int numRoration = 0 / 90;
+                ImageProcessor imageProcessor =
+                        new ImageProcessor.Builder()
+                                .add(new ResizeWithCropOrPadOp(cropSize, cropSize))
+                                .add(new ResizeOp(224, 224, ResizeOp.ResizeMethod.NEAREST_NEIGHBOR))
+                                .add(new Rot90Op(numRoration))
+                                .add(new NormalizeOp(0f, 255f))
+                                .build();
+                TensorImage test=imageProcessor.process(inputImageBuffer);
+                try {
+                    LiteModelMobilenetV3Small100224 model = LiteModelMobilenetV3Small100224.newInstance(getApplicationContext());
 
-                // Creates inputs for reference.
-                TensorBuffer inputFeature0 = TensorBuffer.createFixedSize(new int[]{1, 224, 224, 3}, DataType.FLOAT32);
+                    // Creates inputs for reference.
+                    TensorBuffer inputFeature0 = TensorBuffer.createFixedSize(new int[]{1, 224, 224, 3}, DataType.FLOAT32);
 
-                ByteBuffer byteBuffer = test.getBuffer();
+                    ByteBuffer byteBuffer = test.getBuffer();
 
-                inputFeature0.loadBuffer(byteBuffer);
+                    inputFeature0.loadBuffer(byteBuffer);
 
-                // Runs model inference and gets result.
-                LiteModelMobilenetV3Small100224.Outputs outputs = model.process(inputFeature0);
-                TensorBuffer outputFeature0 = outputs.getOutputFeature0AsTensorBuffer();
+                    // Runs model inference and gets result.
+                    LiteModelMobilenetV3Small100224.Outputs outputs = model.process(inputFeature0);
+                    TensorBuffer outputFeature0 = outputs.getOutputFeature0AsTensorBuffer();
 
-                // Releases model resources if no longer used.
-                model.close();
-                int vtmax=0;
-                for (int i=0;i<outputFeature0.getFloatArray().length;i++)
-                    if (outputFeature0.getFloatArray()[i]>outputFeature0.getFloatArray()[vtmax]) vtmax=i;
-                tv.setText(labels[vtmax]);
-            } catch (IOException e) {
-                // TODO Handle the exception
+                    // Releases model resources if no longer used.
+                    model.close();
+                    int vtmax=0;
+                    double[] ans=softmax(outputFeature0.getFloatArray());
+                    double sum=0;
+                    for (int i=0;i<ans.length;i++)
+                        if (ans[vtmax]<ans[i]) vtmax=i;
+                    xs=ans[vtmax];
+                    tv.setText(labels[vtmax]);
+                } catch (IOException e) {
+                    // TODO Handle the exception
+                }
+                mimageview.setImageBitmap(img2.copy(Bitmap.Config.ARGB_8888,true));
             }
-            mimageview.setImageBitmap(img2.copy(Bitmap.Config.ARGB_8888,true));
-        }
         }
     }
 

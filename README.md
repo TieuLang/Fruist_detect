@@ -3,5 +3,3 @@ App Fruist_detect viết bằng ngôn ngữ java chạy trên điện thoại an
 
 
 
-
-Để build chương trình, các bạn clone project về vào build bằng android studio 4.0 trở lên
